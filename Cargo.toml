@@ -1,0 +1,14 @@
+[package]
+name = "interleaved-bloom-filter"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "interleaved_bloom_filter"
+crate-type = ["cdylib"]
+
+[dependencies]
+fixedbitset = "0.5.7"
+rapidhash = "1.4.0"
+statrs = "0.18.0"
+pyo3 = { version = "0.24.0", features = ["extension-module"] }
