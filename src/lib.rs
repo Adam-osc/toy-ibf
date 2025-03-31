@@ -58,7 +58,7 @@ struct InterleavedBloomFilter {
     error_rate: f64,
     confidence: f64,
     active_filter: Vec<FixedBitSet>,
-    filters: HashMap<String, Vec<FixedBitSet>>,
+    filters: HashMap<(String, String), Vec<FixedBitSet>>,
     h_fn_1: RapidInlineHasher,
     h_fn_2: RapidInlineHasher,
     hashes: Vec<usize>,
@@ -87,7 +87,7 @@ impl InterleavedBloomFilter {
                 bit_set
             })
             .collect();
-        let filters: HashMap<String, Vec<FixedBitSet>> = HashMap::new();
+        let filters: HashMap<(String, String), Vec<FixedBitSet>> = HashMap::new();
 
         let hashes: Vec<usize> = Vec::with_capacity(num_hashes);
         let h_fn_1 = RapidInlineHasher::default();
@@ -115,8 +115,8 @@ impl InterleavedBloomFilter {
             binning_vector
         }
     }
-    pub fn insert_sequence(&mut self, seq_id: &str, seq: &str) {
-        if self.filters.contains_key(seq_id) {
+    pub fn insert_sequence(&mut self, seq_id: (String, String), seq: &str) {
+        if self.filters.contains_key(&seq_id) {
             return;
         }
         // NOTE: duplication
@@ -140,15 +140,15 @@ impl InterleavedBloomFilter {
             }
         }
 
-        self.filters.insert(seq_id.to_string(), filter);
+        self.filters.insert(seq_id, filter);
     }
 
-    pub fn activate_filter(&mut self, seq_id: &str) {
-        if ! self.filters.contains_key(seq_id) {
+    pub fn activate_filter(&mut self, seq_id: (String, String)) {
+        if ! self.filters.contains_key(&seq_id) {
             panic!("Tried to activate a filter that is not present.");
         }
 
-        for (i, filter) in self.filters.get(seq_id).unwrap().iter().enumerate(){
+        for (i, filter) in self.filters.get(&seq_id).unwrap().iter().enumerate(){
             self.active_filter[i] |= filter;
         }
     }
