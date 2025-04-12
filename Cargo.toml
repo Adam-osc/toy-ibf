@@ -10,5 +10,4 @@ crate-type = ["cdylib"]
 [dependencies]
 fixedbitset = "0.5.7"
 rapidhash = "1.4.0"
-statrs = "0.18.0"
 pyo3 = { version = "0.24.0", features = ["extension-module"] }
