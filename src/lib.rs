@@ -67,7 +67,6 @@ fn reverse_complement(seq: &[u8]) -> Vec<u8> {
 #[pyclass]
 struct InterleavedBloomFilter {
     fragment_length: usize,
-    overlap: usize,
     w: usize,
     k: usize,
     num_of_bins: usize,
@@ -89,7 +88,6 @@ impl InterleavedBloomFilter {
         num_of_bins: usize,
         single_filter_size: usize,
         fragment_length: usize,
-        overlap: usize,
         w: usize,
         k: usize,
         num_hashes: usize
@@ -97,11 +95,6 @@ impl InterleavedBloomFilter {
         if num_hashes < 2 {
             return Err(PyValueError::new_err(
                 "Atleast two hash functions have to be used",
-            ));
-        }
-        if overlap >= fragment_length {
-            return Err(PyValueError::new_err(
-                "Overlap cannot be greater or equal to the fragment length",
             ));
         }
 
@@ -126,7 +119,6 @@ impl InterleavedBloomFilter {
 
         Ok(Self {
             fragment_length,
-            overlap,
             w,
             k,
             num_of_bins,
@@ -159,7 +151,7 @@ impl InterleavedBloomFilter {
             .collect();
 
         for frag_start in (0..seq.len())
-            .step_by(self.fragment_length - self.overlap)
+            .step_by(self.fragment_length)
         {
             let fragment = &seq[frag_start..(frag_start + self.fragment_length).min(seq.len())];
             let rc_fragment = &rc_seq[frag_start..(frag_start + self.fragment_length).min(rc_seq.len())];
