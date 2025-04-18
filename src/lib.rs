@@ -74,8 +74,9 @@ struct InterleavedBloomFilter {
     single_filter_size: usize,
     max_idx: usize,
     bin_idxs: HashMap<String, usize>,
+    bin_names: Vec<String>,
     active_filter: Vec<FixedBitSet>,
-    filters: HashMap<(String, String), Vec<FixedBitSet>>,
+    filters: HashMap<String, Vec<FixedBitSet>>,
     hashes: Vec<usize>,
     counting_vector: Vec<usize>,
     binning_vector: FixedBitSet,
@@ -114,8 +115,9 @@ impl InterleavedBloomFilter {
                 bit_set
             })
             .collect();
-        let filters: HashMap<(String, String), Vec<FixedBitSet>> = HashMap::new();
+        let filters: HashMap<String, Vec<FixedBitSet>> = HashMap::new();
         let bin_idxs: HashMap<String, usize> = HashMap::new();
+        let bin_names: Vec<String> = Vec::with_capacity(num_of_bins);
 
         let hashes: Vec<usize> = Vec::with_capacity(num_hashes);
 
@@ -131,6 +133,7 @@ impl InterleavedBloomFilter {
             single_filter_size,
             max_idx,
             bin_idxs,
+            bin_names,
             active_filter,
             filters,
             hashes,
@@ -138,12 +141,13 @@ impl InterleavedBloomFilter {
             binning_vector,
         })
     }
-    pub fn insert_sequence(&mut self, seq_id: (String, String), seq: &str) {
-        if self.filters.contains_key(&seq_id) {
-            return;
-        }
-        let bin_idx = self.bin_idxs.entry(seq_id.0.clone()).or_insert(self.max_idx);
-        *bin_idx += 1;
+    pub fn insert_sequence(&mut self, bin_id: String, seq: &str) {
+        self.bin_names.push(bin_id.clone());
+        let bin_idx = self.bin_idxs.entry(bin_id.clone()).or_insert_with(|| {
+            let i = self.max_idx;
+            self.max_idx += 1;
+            i
+        });
 
         let rc_seq = reverse_complement(seq.as_bytes());
         let mut filter: Vec<FixedBitSet> = (0..self.single_filter_size)
@@ -195,11 +199,11 @@ impl InterleavedBloomFilter {
             }
         }
 
-        self.filters.insert(seq_id, filter);
+        self.filters.insert(bin_id, filter);
     }
 
-    pub fn activate_filter(&mut self, seq_id: (String, String)) -> PyResult<()> {
-        let filters = self.filters.get(&seq_id).ok_or_else(|| {
+    pub fn activate_filter(&mut self, bin_id: String) -> PyResult<()> {
+        let filters = self.filters.get(&bin_id).ok_or_else(|| {
             PyKeyError::new_err("Tried to activate a filter that is not present.")
         })?;
 
@@ -215,7 +219,7 @@ impl InterleavedBloomFilter {
         }
     }
 
-    pub fn is_sequence_present(&mut self, seq: &str, preserved_pct: f64) -> PyResult<bool> {
+    pub fn is_sequence_present(&mut self, seq: &str, preserved_pct: f64) -> PyResult<Option<&str>> {
         if preserved_pct <= 0.0 || preserved_pct >= 1.0 {
             return Err(PyValueError::new_err(
                 "Preserved percentage must be a probability between 0 and 1 (exclusive)",
@@ -223,6 +227,8 @@ impl InterleavedBloomFilter {
         }
 
         let mut max_count: usize = 0;
+        let mut max_present_count: usize = 0;
+        let mut max_present_bin_id: Option<&str> = None;
         let num_windows = if seq.len() >= (self.w + self.k - 1) {
             seq.len() - (self.w + self.k - 1)
         } else {
@@ -268,15 +274,18 @@ impl InterleavedBloomFilter {
             for j in self.binning_vector.ones() {
                 self.counting_vector[j] += 1;
                 max_count = max_count.max(self.counting_vector[j]);
-                if max_count >= threshold {
-                    return Ok(true);
+
+                if max_count >= threshold && self.counting_vector[j] > max_present_count {
+                    max_present_count = self.counting_vector[j];
+                    max_present_bin_id = Some(&self.bin_names[j]);
                 }
-                if threshold - max_count > num_windows - i - 1 {
-                    return Ok(false);
+
+                if max_count < threshold && threshold - max_count > num_windows - i - 1 {
+                    return Ok(None);
                 }
             }
         }
-        Ok(false)
+        Ok(max_present_bin_id)
     }
 }
 
