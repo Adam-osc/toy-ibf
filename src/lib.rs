@@ -1,5 +1,5 @@
 use fixedbitset::FixedBitSet;
-use pyo3::exceptions::{PyKeyError, PyValueError};
+use pyo3::exceptions::{PyKeyError,PyIndexError, PyValueError};
 use pyo3::prelude::*;
 use rapidhash::{rapidhash, rapidhash_seeded};
 use std::collections::HashMap;
@@ -133,7 +133,11 @@ impl InterleavedBloomFilter {
             binning_vector,
         })
     }
-    pub fn insert_sequence(&mut self, bin_id: String, seq: &str) {
+    pub fn insert_sequence(&mut self, bin_id: String, seq: &str) -> PyResult<()> {
+        if self.max_idx >= self.num_of_bins {
+            return Err(PyIndexError::new_err("Attempted to insert into a non‑existent bin"));
+        }
+
         self.bin_names.push(bin_id.clone());
         let bin_idx = self.bin_idxs.entry(bin_id.clone()).or_insert_with(|| {
             let i = self.max_idx;
@@ -186,17 +190,18 @@ impl InterleavedBloomFilter {
 
                 hash(&mut self.hashes, prev_minimizer);
                 for digest in self.hashes.drain(..) {
-                    FixedBitSet::set(&mut filter[digest % self.single_filter_size], *bin_idx % self.num_of_bins, true);
+                    FixedBitSet::set(&mut filter[digest % self.single_filter_size], *bin_idx, true);
                 }
             }
         }
 
         self.filters.insert(bin_id, filter);
+        Ok(())
     }
 
     pub fn activate_filter(&mut self, bin_id: String) -> PyResult<()> {
         let filters = self.filters.get(&bin_id).ok_or_else(|| {
-            PyKeyError::new_err("Tried to activate a filter that is not present.")
+            PyKeyError::new_err("Tried to activate a filter that is not present")
         })?;
 
         for (i, filter) in filters.iter().enumerate() {
