@@ -57,10 +57,17 @@ fn hash(
     }
 }
 
-fn reverse_complement(seq: &[u8]) -> Vec<u8> {
-    seq.iter()
+fn reverse_complement(seq: &str) -> String {
+    seq.chars()
         .rev()
-        .map(|c| if c & 2 != 0 { c ^ 4 } else { c ^ 21 })
+        .map(|base| match base {
+            'A' => 'T',
+            'C' => 'G',
+            'G' => 'C',
+            'T' => 'A',
+            'N' => 'N',
+            _   => 'N',
+        })
         .collect()
 }
 
@@ -137,6 +144,7 @@ impl InterleavedBloomFilter {
         if self.max_idx >= self.num_of_bins {
             return Err(PyIndexError::new_err("Attempted to insert into a non‑existent bin"));
         }
+        let sane_seq = seq.to_ascii_uppercase();
 
         self.bin_names.push(bin_id.clone());
         let bin_idx = self.bin_idxs.entry(bin_id.clone()).or_insert_with(|| {
@@ -145,7 +153,7 @@ impl InterleavedBloomFilter {
             i
         });
 
-        let rc_seq = reverse_complement(seq.as_bytes());
+        let rc_seq = reverse_complement(&sane_seq);
         let mut filter: Vec<FixedBitSet> = (0..self.single_filter_size)
             .map(|_| {
                 let mut bit_set = FixedBitSet::with_capacity(self.num_of_bins);
@@ -154,10 +162,10 @@ impl InterleavedBloomFilter {
             })
             .collect();
 
-        for frag_start in (0..seq.len())
+        for frag_start in (0..sane_seq.len())
             .step_by(self.fragment_length)
         {
-            let fragment = &seq[frag_start..(frag_start + self.fragment_length).min(seq.len())];
+            let fragment = &sane_seq[frag_start..(frag_start + self.fragment_length).min(sane_seq.len())];
             let rc_fragment = &rc_seq[frag_start..(frag_start + self.fragment_length).min(rc_seq.len())];
             let num_windows = if fragment.len() >= (self.w + self.k - 1) {
                 fragment.len() - (self.w + self.k - 1)
@@ -171,7 +179,7 @@ impl InterleavedBloomFilter {
 
             for j in 0..num_windows {
                 let window = fragment[j..(j + self.w + self.k - 1).min(fragment.len())].as_bytes();
-                let rc_window = &rc_fragment[j..(j + self.w + self.k - 1).min(rc_fragment.len())];
+                let rc_window = &rc_fragment[j..(j + self.w + self.k - 1).min(rc_fragment.len())].as_bytes();
                 let (minimizer, value, new_lifetime) = det_minimizer(
                     window,
                     rc_window,
@@ -232,7 +240,7 @@ impl InterleavedBloomFilter {
             0
         } + 1;
 
-        let rc_seq = reverse_complement(seq.as_bytes());
+        let rc_seq = reverse_complement(seq);
         let threshold = (num_windows as f64 * preserved_pct).ceil() as usize;
         self.counting_vector.fill(0);
 
@@ -245,7 +253,7 @@ impl InterleavedBloomFilter {
             let rc_window = &rc_seq[i..(i + self.w + self.k - 1).min(seq.len())];
             let (minimizer, value, new_lifetime) = det_minimizer(
                 window.as_bytes(),
-                rc_window,
+                rc_window.as_bytes(),
                 self.w,
                 self.k,
                 (prev_minimizer, prev_value, lifetime),
